@@ -1,7 +1,7 @@
 BLUE := \033[1;34m
 GREEN := \033[1;32m
 RESET := \033[0m
-PYTHON_VERSIONS := 3.11 3.12 3.13
+PYTHON_VERSIONS := 3.11.13 3.12.10 3.13.9
 
 .PHONY: tests format check check-matrix all prod rename
 
