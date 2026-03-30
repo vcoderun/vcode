@@ -1,0 +1,19 @@
+site_name: vCode
+site_description: ACP-first local coding agent built on pydantic-ai.
+theme:
+  name: material
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Current Capabilities: current-capabilities.md
+  - ACP Integration: acp.md
+  - Configuration: configuration.md
+  - Modes and Sessions: sessions-and-modes.md
+  - Approvals: approvals.md
+  - Workspace Tools: workspace-tools.md
+  - Limitations: limitations.md
+  - About: about/index.md

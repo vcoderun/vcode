@@ -1,0 +1,11 @@
+{
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "standard",
+  "exclude": ["**/.*", "references"],
+  "extraPaths": ["src"],
+  "reportAny": "none",
+  "reportExplicitAny": "none",
+  "reportIncompatibleMethodOverride": "none",
+  "reportMissingImports": "none",
+  "reportAttributeAccessIssue": "none",
+}
