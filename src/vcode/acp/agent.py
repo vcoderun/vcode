@@ -1,6 +1,7 @@
 from __future__ import annotations as _annotations
 
 from pathlib import Path
+from typing import Any, TypeAlias
 from uuid import uuid4
 
 from acp import PROTOCOL_VERSION, Agent, RequestError, update_agent_message_text
@@ -8,16 +9,22 @@ from acp.interfaces import Client
 from acp.schema import (
     AgentCapabilities,
     AllowedOutcome,
+    AudioContentBlock,
     AuthenticateResponse,
     CloseSessionResponse,
+    EmbeddedResourceContentBlock,
     ForkSessionResponse,
+    HttpMcpServer,
+    ImageContentBlock,
     Implementation,
     InitializeResponse,
     ListSessionsResponse,
     LoadSessionResponse,
+    McpServerStdio,
     NewSessionResponse,
     PromptCapabilities,
     PromptResponse,
+    ResourceContentBlock,
     ResumeSessionResponse,
     SessionCapabilities,
     SessionForkCapabilities,
@@ -27,6 +34,8 @@ from acp.schema import (
     SetSessionConfigOptionResponse,
     SetSessionModelResponse,
     SetSessionModeResponse,
+    SseMcpServer,
+    TextContentBlock,
 )
 
 from vcode import __version__
@@ -51,6 +60,15 @@ from vcode.runtime import VCodeRuntime
 
 __all__ = ("VCodeAcpAgent",)
 
+McpServerConfigEntry: TypeAlias = HttpMcpServer | SseMcpServer | McpServerStdio
+PromptBlock: TypeAlias = (
+    TextContentBlock
+    | ImageContentBlock
+    | AudioContentBlock
+    | ResourceContentBlock
+    | EmbeddedResourceContentBlock
+)
+
 
 class VCodeAcpAgent(Agent):
     client: Client | None
@@ -69,7 +87,7 @@ class VCodeAcpAgent(Agent):
         protocol_version: int,
         client_capabilities=None,
         client_info=None,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> InitializeResponse:
         del protocol_version, client_capabilities, client_info, kwargs
         return InitializeResponse(
@@ -90,12 +108,15 @@ class VCodeAcpAgent(Agent):
             agent_info=Implementation(name="vcode", title="vCode", version=__version__),
         )
 
-    async def authenticate(self, method_id: str, **kwargs: object) -> AuthenticateResponse | None:
+    async def authenticate(self, method_id: str, **kwargs: Any) -> AuthenticateResponse | None:
         del method_id, kwargs
         return AuthenticateResponse()
 
     async def new_session(
-        self, cwd: str, mcp_servers: list[object] | None = None, **kwargs: object
+        self,
+        cwd: str,
+        mcp_servers: list[McpServerConfigEntry] | None = None,
+        **kwargs: Any,
     ) -> NewSessionResponse:
         del mcp_servers, kwargs
         record = self.runtime.create_session(Path(cwd))
@@ -112,8 +133,8 @@ class VCodeAcpAgent(Agent):
         self,
         cwd: str,
         session_id: str,
-        mcp_servers: list[object] | None = None,
-        **kwargs: object,
+        mcp_servers: list[McpServerConfigEntry] | None = None,
+        **kwargs: Any,
     ) -> ForkSessionResponse:
         del mcp_servers, kwargs
         record = self.runtime.clone_session(Path(cwd), session_id)
@@ -132,8 +153,8 @@ class VCodeAcpAgent(Agent):
         self,
         cwd: str,
         session_id: str,
-        mcp_servers: list[object] | None = None,
-        **kwargs: object,
+        mcp_servers: list[McpServerConfigEntry] | None = None,
+        **kwargs: Any,
     ) -> LoadSessionResponse | None:
         del mcp_servers, kwargs
         workspace = Path(cwd)
@@ -153,8 +174,8 @@ class VCodeAcpAgent(Agent):
         self,
         cwd: str,
         session_id: str,
-        mcp_servers: list[object] | None = None,
-        **kwargs: object,
+        mcp_servers: list[McpServerConfigEntry] | None = None,
+        **kwargs: Any,
     ) -> ResumeSessionResponse:
         response = await self.load_session(cwd, session_id, mcp_servers, **kwargs)
         if response is None:
@@ -169,7 +190,7 @@ class VCodeAcpAgent(Agent):
         self,
         cursor: str | None = None,
         cwd: str | None = None,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> ListSessionsResponse:
         del cursor, kwargs
         workspace = Path(cwd or Path.cwd()).resolve()
@@ -189,7 +210,7 @@ class VCodeAcpAgent(Agent):
         self,
         mode_id: str,
         session_id: str,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> SetSessionModeResponse | None:
         del kwargs
         workspace = self.session_roots.get(session_id)
@@ -210,7 +231,7 @@ class VCodeAcpAgent(Agent):
         self,
         model_id: str,
         session_id: str,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> SetSessionModelResponse | None:
         del kwargs
         workspace = self.session_roots.get(session_id)
@@ -234,7 +255,7 @@ class VCodeAcpAgent(Agent):
         config_id: str,
         session_id: str,
         value: str | bool,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> SetSessionConfigOptionResponse | None:
         del kwargs
         workspace = self.session_roots.get(session_id)
@@ -277,9 +298,13 @@ class VCodeAcpAgent(Agent):
         )
 
     async def prompt(
-        self, prompt: list[object], session_id: str, **kwargs: object
+        self,
+        prompt: list[PromptBlock],
+        session_id: str,
+        message_id: str | None = None,
+        **kwargs: Any,
     ) -> PromptResponse:
-        del kwargs
+        del kwargs, message_id
         workspace = self.session_roots.get(session_id)
         if workspace is None:
             raise RequestError.invalid_params({"message": "Session not found"})
@@ -298,10 +323,10 @@ class VCodeAcpAgent(Agent):
 
         return PromptResponse(stop_reason=result.stop_reason)
 
-    async def cancel(self, session_id: str, **kwargs: object) -> None:
+    async def cancel(self, session_id: str, **kwargs: Any) -> None:
         del session_id, kwargs
 
-    async def close_session(self, session_id: str, **kwargs: object) -> CloseSessionResponse | None:
+    async def close_session(self, session_id: str, **kwargs: Any) -> CloseSessionResponse | None:
         del kwargs
         self.session_roots.pop(session_id, None)
         return CloseSessionResponse()

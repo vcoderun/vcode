@@ -1,6 +1,7 @@
 from __future__ import annotations as _annotations
 
 import asyncio
+from collections.abc import Sequence
 from pathlib import Path
 
 from acp import update_agent_message_text, update_user_message_text
@@ -34,7 +35,7 @@ __all__ = (
 )
 
 
-def build_text_prompt(prompt: list[object]) -> str:
+def build_text_prompt(prompt: Sequence[object]) -> str:
     parts: list[str] = []
     for block in prompt:
         if isinstance(block, TextContentBlock) and block.text:

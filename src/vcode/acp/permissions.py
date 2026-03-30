@@ -21,16 +21,23 @@ __all__ = (
 
 
 def build_permission_tool_call(request: ApprovalRequest, request_id: str) -> ToolCallProgress:
-    raw_input: dict[str, object] = request.raw_input or {
-        "target": request.target,
-        "reason": request.reason,
-    }
+    raw_input: dict[str, object]
+    if request.raw_input is None:
+        raw_input = {
+            "target": request.target,
+            "reason": request.reason,
+        }
+    else:
+        raw_input = dict(request.raw_input)
     locations: list[ToolCallLocation] | None = None
     title = request.title or request.tool_name
     content: list[ContentToolCallContent | FileEditToolCallContent | TerminalToolCallContent]
 
     if request.tool_name == "write_file":
-        raw_input = request.raw_input or {"path": request.target}
+        if request.raw_input is None:
+            raw_input = {"path": request.target}
+        else:
+            raw_input = dict(request.raw_input)
         locations = [ToolCallLocation(path=request.target)]
         content = [
             tool_diff_content(
