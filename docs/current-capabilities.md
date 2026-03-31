@@ -62,20 +62,38 @@ vCode currently supports:
 Current storage:
 
 - `.vcode/preferences.json`
+- `.vcode/mcp.yml` with JSON fallback
+- `.vcode/hooks.yml` with JSON fallback
+
+## Capability stack
+
+The runtime is assembled from native `pydantic-ai` capabilities:
+
+- `Toolset(build_filesystem_toolset(...))`
+- `PrepareTools(...)` for mode-aware filesystem visibility
+- `Hooks(...)` built from `.vcode/hooks.yml`
+- `MCP(...)` or stdio MCP toolsets from `.vcode/mcp.yml`
 
 ## Workspace tools
 
-Implemented local tools:
+Implemented local filesystem tools:
 
 - `list_files`
 - `read_file`
 - `write_file`
 
+Manual demo assets also exist in the repository:
+
+- `scripts/demo_mcp_server.py`
+- `scripts/mock_hook_audit.py`
+- `scripts/mock_hook_snapshot.py`
+
 Current behavior:
 
 - reads are plain text reads
 - writes are mode-gated
-- writes require approval unless already allowed for the session
+- `Ask` mode hides `write_file` from the model through `PrepareTools`
+- writes require deferred approval unless already allowed for the session
 - `.vcode/.vcodeignore` hides matching files from read/list
 
 ## Approval system
@@ -86,6 +104,8 @@ Implemented today:
 - manual allow/deny commands
 - importing approval preferences from another session
 - ACP permission prompts with diff previews for writes
+- native deferred approvals through `pydantic-ai`
+- hook commands executed through `pydantic-ai Hooks`
 
 Not implemented yet:
 
@@ -93,6 +113,7 @@ Not implemented yet:
 - network approvals
 - browser approvals
 - multi-tool approval policies
+- approval gating for hook command execution
 
 ## Slash commands
 
@@ -103,6 +124,8 @@ Currently handled in the runtime:
 - `/model <model-id>`
 - `/model <ask|plan|agent> <model-id>`
 - `/approvals`
+- `/hooks`
+- `/mcp`
 - `/approve <tool> <target>`
 - `/deny <tool> <target>`
 - `/update-preferences <session-id>`
@@ -113,6 +136,7 @@ The repository currently has tests for:
 
 - session behavior
 - ACP adapter behavior
+- capability composition
 - config loading
 - approval persistence
 - model command flows

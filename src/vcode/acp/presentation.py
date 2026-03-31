@@ -52,6 +52,14 @@ def build_available_commands() -> list[AvailableCommand]:
             description="Show saved session approvals.",
         ),
         AvailableCommand(
+            name="hooks",
+            description="Show configured hook events and commands.",
+        ),
+        AvailableCommand(
+            name="mcp",
+            description="Show configured MCP servers and transports.",
+        ),
+        AvailableCommand(
             name="approve",
             description="Allow a tool target for this session.",
             input=build_command_input("approve <write> <path>"),

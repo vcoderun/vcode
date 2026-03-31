@@ -10,6 +10,7 @@ from vcode.config import load_preferences
 from vcode.sessions import SessionStore, utc_now
 
 __all__ = (
+    "ApprovalDecision",
     "ApprovalPolicy",
     "ApprovalRequest",
     "ApprovalResolution",
@@ -67,6 +68,12 @@ class ApprovalRequest:
 @dataclass(frozen=True, slots=True, kw_only=True)
 class ApprovalResolution:
     kind: ApprovalResolverKind
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ApprovalDecision:
+    outcome: ApprovalOutcome
+    message: str | None = None
 
 
 class ApprovalPolicy:
@@ -194,74 +201,107 @@ class ApprovalPolicy:
         self.store.save(updated_record)
         return imported_count
 
-    async def authorize_write(
+    def build_write_request(
         self,
         workspace_root: Path,
         session_id: str,
         target: Path,
         content: str,
-    ) -> str | None:
+        *,
+        tool_call_id: str | None = None,
+    ) -> ApprovalRequest:
         relative_target = str(target.relative_to(workspace_root))
-        if relative_target.split("/")[:2] == [".vcode", "plans"]:
-            return None
-
-        preferences = load_preferences(workspace_root)
-        if preferences.yolo_default:
-            return None
-
-        existing_rule = self.find_rule(workspace_root, session_id, "write_file", relative_target)
-        if existing_rule is not None:
-            if existing_rule.outcome == "allow":
-                return None
-            return f"Approval denied for write_file {relative_target}."
-
-        if self.resolver is None:
-            return (
-                f"Approval required for write_file {relative_target}. "
-                f"Run `/approve write {relative_target}` to allow it for this session."
-            )
-
         old_text: str | None = None
         if target.exists() and target.is_file():
             old_text = target.read_text(encoding="utf-8", errors="replace")
-
-        request = ApprovalRequest(
+        return ApprovalRequest(
             session_id=session_id,
             workspace_root=workspace_root,
             tool_name="write_file",
             target=relative_target,
             kind="edit",
             reason=f"Write {relative_target}",
-            tool_call_id=f"approval-write-{session_id}-{relative_target}",
+            tool_call_id=tool_call_id or f"approval-write-{session_id}-{relative_target}",
             title=f"Write {relative_target}",
             raw_input={"path": relative_target, "content": content},
             old_text=old_text,
             new_text=content,
         )
+
+    def evaluate(self, request: ApprovalRequest) -> ApprovalDecision:
+        if request.tool_name != "write_file":
+            return ApprovalDecision(
+                outcome="ask", message=f"Approval required for {request.tool_name}."
+            )
+
+        relative_target = request.target
+        if relative_target.split("/")[:2] == [".vcode", "plans"]:
+            return ApprovalDecision(outcome="allow")
+
+        preferences = load_preferences(request.workspace_root)
+        if preferences.yolo_default:
+            return ApprovalDecision(outcome="allow")
+
+        existing_rule = self.find_rule(
+            request.workspace_root,
+            request.session_id,
+            request.tool_name,
+            relative_target,
+        )
+        if existing_rule is not None:
+            if existing_rule.outcome == "allow":
+                return ApprovalDecision(outcome="allow")
+            return ApprovalDecision(
+                outcome="deny",
+                message=f"Approval denied for write_file {relative_target}.",
+            )
+
+        return ApprovalDecision(
+            outcome="ask",
+            message=(
+                f"Approval required for write_file {relative_target}. "
+                f"Run `/approve write {relative_target}` to allow it for this session."
+            ),
+        )
+
+    async def resolve(self, request: ApprovalRequest) -> ApprovalDecision:
+        decision = self.evaluate(request)
+        if decision.outcome != "ask":
+            return decision
+        if self.resolver is None:
+            return decision
+
+        relative_target = request.target
         resolution = await self.resolver(request)
         if resolution.kind == "allow_always":
             self.set_rule(
-                workspace_root,
-                session_id,
-                "write_file",
+                request.workspace_root,
+                request.session_id,
+                request.tool_name,
                 relative_target,
                 "allow",
                 source="approval_prompt",
             )
-            return None
+            return ApprovalDecision(outcome="allow")
         if resolution.kind == "reject_always":
             self.set_rule(
-                workspace_root,
-                session_id,
-                "write_file",
+                request.workspace_root,
+                request.session_id,
+                request.tool_name,
                 relative_target,
                 "deny",
                 source="approval_prompt",
             )
-            return f"Approval denied for write_file {relative_target}."
+            return ApprovalDecision(
+                outcome="deny",
+                message=f"Approval denied for write_file {relative_target}.",
+            )
         if resolution.kind == "allow_once":
-            return None
-        return f"Approval denied for write_file {relative_target}."
+            return ApprovalDecision(outcome="allow")
+        return ApprovalDecision(
+            outcome="deny",
+            message=f"Approval denied for write_file {relative_target}.",
+        )
 
 
 def _parse_approval_outcome(value: object) -> ApprovalOutcome | None:

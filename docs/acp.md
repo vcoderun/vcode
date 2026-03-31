@@ -66,6 +66,15 @@ The current permission request includes:
 
 This is especially important for ACP clients such as `toad`, which can render file diffs in approval dialogs.
 
+## Hook and MCP visibility
+
+ACP clients now also receive projections for:
+
+- hook command executions as generic `execute` tool updates
+- non-filesystem tools, including MCP-backed tools, as generic execute-style tool updates
+
+This means MCP and hook activity is no longer invisible in ACP sessions, even when the tool family does not map to a specialized ACP kind such as `read` or `edit`.
+
 ## Known current limits
 
 The ACP surface is already useful, but still incomplete.
@@ -76,4 +85,4 @@ Missing or partial areas:
 - filesystem client-backed fallback behavior
 - richer session metadata
 - search and browser tools
-- MCP-backed tool routing
+- richer MCP approval and policy routing

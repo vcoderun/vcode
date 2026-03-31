@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from vcode.approvals import ApprovalPolicy
+    from vcode.hooks import HookEventCollector
 
 __all__ = (
     "AgentDeps",
@@ -27,6 +28,7 @@ class AgentDeps:
     mode_id: str
     session_id: str
     approval_policy: ApprovalPolicy
+    hook_event_collector: HookEventCollector | None = None
 
 
 class WorkspaceError(Exception):

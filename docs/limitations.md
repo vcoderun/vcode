@@ -24,12 +24,20 @@ Not implemented yet:
 
 ## Config gaps
 
-These surfaces exist but are not yet fully active:
+These surfaces still exist, but are not yet full runtime bootstrap surfaces:
 
 - `agents.json`
-- `mcp.json`
 
-They can be loaded and validated, but they do not yet drive a complete runtime bootstrap.
+`mcp.yml` / `mcp.json` is active and builds native MCP capabilities, but still has current limits:
+
+- approval policy is not yet wired into MCP tool calls
+- collision strategy still relies on explicit prefixes when needed
+- there is no richer agent-level MCP orchestration yet
+
+`hooks.yml` / `hooks.json` is active for command hooks, but still limited:
+
+- no approval layer for hook commands yet
+- no richer hook action types beyond command execution
 
 ## Approval gaps
 

@@ -2,12 +2,16 @@ from __future__ import annotations as _annotations
 
 from vcode.config.loading import (
     load_agents_config,
+    load_hooks_config,
     load_mcp_config,
     load_preferences,
     save_preferences,
 )
 from vcode.config.models import (
     AgentSpec,
+    HookCommandConfig,
+    HookConfig,
+    HookEventId,
     McpConfig,
     McpServerConfig,
     WebBrowserPreferences,
@@ -19,6 +23,9 @@ from vcode.config.models import (
 from vcode.config.paths import (
     agents_file,
     global_vcode_dir,
+    hooks_file,
+    local_hooks_file,
+    local_mcp_file,
     local_preferences_file,
     mcp_file,
     preferences_file,
@@ -28,6 +35,9 @@ from vcode.config.paths import (
 
 __all__ = (
     "AgentSpec",
+    "HookCommandConfig",
+    "HookConfig",
+    "HookEventId",
     "McpConfig",
     "McpServerConfig",
     "WebBrowserPreferences",
@@ -37,9 +47,13 @@ __all__ = (
     "WorkspacePreferences",
     "agents_file",
     "global_vcode_dir",
+    "hooks_file",
     "load_agents_config",
+    "load_hooks_config",
     "load_mcp_config",
     "load_preferences",
+    "local_hooks_file",
+    "local_mcp_file",
     "local_preferences_file",
     "mcp_file",
     "preferences_file",

@@ -21,6 +21,10 @@ The current codebase is intentionally narrow: it focuses on a solid skeleton for
 - Ask for write approvals with file-aware diff previews
 - Store the selected default model in `.vcode/preferences.json`
 - Let each mode inherit the default model or override it per mode
+- Compose the runtime from native `pydantic-ai` capabilities
+- Load YAML-first MCP and hooks config from `.vcode/`
+- Attach configured MCP servers through native `MCP` capabilities
+- Execute configured hook commands through `pydantic-ai Hooks`
 
 ## What is not finished yet
 
@@ -31,7 +35,7 @@ These items are planned, but not part of the current working skeleton:
 - built-in web search and scraping
 - Python quality loop (`pytest`, `ruff`, `mypy`/`pyright`) as first-class tools
 - subagents, CodeMode, RLM, and multi-agent orchestration
-- full MCP runtime integration from `mcp.json`
+- richer hook actions and approval policy for `hooks.yml` / `hooks.json`
 
 ## Documentation map
 

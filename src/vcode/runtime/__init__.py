@@ -5,12 +5,21 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TypeAlias
 
+import dotenv
 from acp.schema import SessionModelState
-from pydantic_ai import Agent, ModelMessagesTypeAdapter, RunContext
-from pydantic_ai.messages import ModelMessage
+from pydantic_ai import (
+    Agent,
+    DeferredToolRequests,
+    DeferredToolResults,
+    ModelMessagesTypeAdapter,
+)
+from pydantic_ai.messages import ModelMessage, ToolCallPart
 from pydantic_ai.models import Model
+from pydantic_ai.tools import ToolDenied
 
-from vcode.approvals import ApprovalPolicy
+from vcode.approvals import ApprovalPolicy, ApprovalRequest
+from vcode.caps import build_runtime_caps
+from vcode.hooks import HookEventCollector
 from vcode.modes import DEFAULT_MODE_ID, get_mode
 from vcode.preferences import active_model_for_mode, build_model_state, load_preferences
 from vcode.runtime.commands import (
@@ -22,14 +31,9 @@ from vcode.runtime.commands import (
 from vcode.runtime.projections import build_tool_projections
 from vcode.runtime.types import TurnResult
 from vcode.sessions import SessionMessage, SessionRecord, SessionStore
-from vcode.workspace import (
-    AgentDeps,
-    WorkspacePathError,
-    list_workspace_files,
-    read_workspace_file,
-    resolve_workspace_path,
-    write_workspace_file,
-)
+from vcode.workspace import AgentDeps
+
+dotenv.load_dotenv()
 
 __all__ = ("VCodeRuntime",)
 
@@ -52,11 +56,10 @@ class VCodeRuntime:
         self.store = store or SessionStore()
         self.model_resolver = model_resolver or (lambda model_id: model_id)
         self.approval_policy = approval_policy or ApprovalPolicy(store=self.store)
-        self.agent = self._build_agent()
 
-    def _build_agent(self) -> Agent[AgentDeps, str]:
-        agent = Agent[AgentDeps, str](
-            output_type=str,
+    def build_agent(self, workspace: Path) -> Agent[AgentDeps, str]:
+        return Agent[AgentDeps, str](
+            capabilities=build_runtime_caps(workspace),
             deps_type=AgentDeps,
             instructions=(
                 "You are vCode, a coding agent for a local workspace. "
@@ -65,35 +68,6 @@ class VCodeRuntime:
                 "Agent mode may edit the workspace."
             ),
         )
-
-        @agent.tool
-        async def list_files(ctx: RunContext[AgentDeps], path: str = ".") -> str:
-            """List files relative to the workspace root."""
-            return list_workspace_files(ctx.deps.workspace_root, path)
-
-        @agent.tool
-        async def read_file(ctx: RunContext[AgentDeps], path: str) -> str:
-            """Read a UTF-8 text file from the workspace."""
-            return read_workspace_file(ctx.deps.workspace_root, path)
-
-        @agent.tool
-        async def write_file(ctx: RunContext[AgentDeps], path: str, content: str) -> str:
-            """Write a UTF-8 text file inside the workspace."""
-            try:
-                target = resolve_workspace_path(ctx.deps.workspace_root, path)
-            except WorkspacePathError as exc:
-                return str(exc)
-            approval_message = await ctx.deps.approval_policy.authorize_write(
-                ctx.deps.workspace_root,
-                ctx.deps.session_id,
-                target,
-                content,
-            )
-            if approval_message is not None:
-                return approval_message
-            return write_workspace_file(ctx.deps.workspace_root, ctx.deps.mode_id, path, content)
-
-        return agent
 
     def create_session(self, cwd: Path, mode_id: str | None = None) -> SessionRecord:
         workspace = cwd.resolve()
@@ -160,25 +134,53 @@ class VCodeRuntime:
             return TurnResult(response_text=response_text)
 
         message_history = self.read_model_messages(workspace, session_id)
+        hook_event_collector = HookEventCollector()
         deps = AgentDeps(
             workspace_root=workspace,
             mode_id=record.mode_id,
             session_id=session_id,
             approval_policy=self.approval_policy,
+            hook_event_collector=hook_event_collector,
         )
+        agent = self.build_agent(workspace)
         model = self.model_resolver(active_model)
+        prompt_input: str | None = normalized_prompt
+        deferred_results: DeferredToolResults | None = None
+        projection_messages: list[ModelMessage] = []
 
-        try:
-            result = await self.agent.run(
-                normalized_prompt,
-                deps=deps,
-                model=model,
-                message_history=message_history,
-            )
-        except Exception as exc:
-            response_text = f"Model run failed for {active_model}: {exc}"
-            tool_projections = ()
-        else:
+        while True:
+            try:
+                result = await agent.run(
+                    prompt_input,
+                    deps=deps,
+                    deferred_tool_results=deferred_results,
+                    model=model,
+                    message_history=message_history,
+                    output_type=[str, DeferredToolRequests],
+                )
+            except Exception as exc:
+                response_text = f"Model run failed for {active_model}: {exc}"
+                tool_projections = ()
+                break
+
+            projection_messages.extend(result.new_messages())
+            if isinstance(result.output, DeferredToolRequests):
+                resolved = await self._resolve_deferred_requests(
+                    workspace,
+                    session_id,
+                    result.output,
+                )
+                if resolved is None:
+                    response_text = self._pending_approval_message(
+                        workspace, session_id, result.output
+                    )
+                    tool_projections = ()
+                    break
+                deferred_results = resolved
+                message_history = result.all_messages()
+                prompt_input = None
+                continue
+
             response_text = _render_output(result.output)
             tool_projections = ()
             try:
@@ -187,7 +189,10 @@ class VCodeRuntime:
                     session_id,
                     result.all_messages_json(),
                 )
-                tool_projections = build_tool_projections(result.new_messages())
+                tool_projections = (
+                    *hook_event_collector.build_projections(),
+                    *build_tool_projections(projection_messages),
+                )
             except Exception as exc:
                 error_type = type(exc).__name__
                 response_text = (
@@ -195,7 +200,78 @@ class VCodeRuntime:
                     f"[vCode warning] Post-processing failed after model run "
                     f"({error_type}: {exc})."
                 )
+            break
 
         self.store.append_message(workspace, session_id, "user", normalized_prompt)
         self.store.append_message(workspace, session_id, "assistant", response_text)
         return TurnResult(response_text=response_text, tool_projections=tool_projections)
+
+    async def _resolve_deferred_requests(
+        self,
+        workspace: Path,
+        session_id: str,
+        requests: DeferredToolRequests,
+    ) -> DeferredToolResults | None:
+        if requests.calls:
+            return None
+
+        results = DeferredToolResults()
+        unresolved = False
+        for call in requests.approvals:
+            request = self._approval_request_from_tool_call(workspace, session_id, call)
+            if request is None:
+                continue
+            decision = await self.approval_policy.resolve(request)
+            if decision.outcome == "allow":
+                results.approvals[call.tool_call_id] = True
+                continue
+            if decision.outcome == "deny":
+                results.approvals[call.tool_call_id] = ToolDenied(
+                    message=decision.message or "The tool call was denied."
+                )
+                continue
+            unresolved = True
+
+        if unresolved or not results.approvals:
+            return None
+        return results
+
+    def _approval_request_from_tool_call(
+        self,
+        workspace: Path,
+        session_id: str,
+        call: ToolCallPart,
+    ) -> ApprovalRequest | None:
+        if call.tool_name != "write_file":
+            return None
+        args = call.args_as_dict()
+        path_value = args.get("path")
+        content_value = args.get("content")
+        if not isinstance(path_value, str) or not isinstance(content_value, str):
+            return None
+        target = workspace / path_value
+        return self.approval_policy.build_write_request(
+            workspace,
+            session_id,
+            target.resolve(),
+            content_value,
+            tool_call_id=call.tool_call_id,
+        )
+
+    def _pending_approval_message(
+        self,
+        workspace: Path,
+        session_id: str,
+        requests: DeferredToolRequests,
+    ) -> str:
+        lines: list[str] = []
+        for call in requests.approvals:
+            request = self._approval_request_from_tool_call(workspace, session_id, call)
+            if request is None:
+                continue
+            decision = self.approval_policy.evaluate(request)
+            if decision.outcome == "ask" and decision.message is not None:
+                lines.append(decision.message)
+        if lines:
+            return "\n".join(lines)
+        return "Approval is required before the deferred tool call can continue."

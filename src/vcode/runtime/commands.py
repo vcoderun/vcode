@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from vcode.approvals import ApprovalPolicy
+from vcode.config import load_hooks_config, load_mcp_config
 from vcode.preferences import (
     active_model_for_mode,
     load_preferences,
@@ -81,6 +82,12 @@ def handle_runtime_command(
         return format_approval_status(
             context.approval_policy, context.workspace, context.session_id
         )
+
+    if normalized_prompt == "/hooks":
+        return format_hooks_status(context.workspace)
+
+    if normalized_prompt == "/mcp":
+        return format_mcp_status(context.workspace)
 
     if normalized_prompt.startswith("/approve "):
         parts = normalized_prompt.split(maxsplit=2)
@@ -199,3 +206,38 @@ def approval_tool_name(alias: str) -> str:
     if normalized in {"list", "list_files"}:
         return "list_files"
     return normalized
+
+
+def format_hooks_status(workspace: Path) -> str:
+    config = load_hooks_config(workspace)
+    if not config.events:
+        return "Configured Hooks\n\nNo hooks configured."
+
+    lines = ["Configured Hooks", ""]
+    for event_id in sorted(config.events):
+        lines.append(f"{event_id}:")
+        for command in config.events[event_id]:
+            label = command.name or command.command
+            detail = " ".join([command.command, *command.args]).strip()
+            if command.tools:
+                lines.append(f"- {label}: {detail} [tools: {', '.join(command.tools)}]")
+            else:
+                lines.append(f"- {label}: {detail}")
+        lines.append("")
+    return "\n".join(lines).rstrip()
+
+
+def format_mcp_status(workspace: Path) -> str:
+    config = load_mcp_config(workspace)
+    if not config.servers:
+        return "Configured MCP Servers\n\nNo MCP servers configured."
+
+    lines = ["Configured MCP Servers", ""]
+    for server in config.servers:
+        status = "enabled" if server.enabled else "disabled"
+        endpoint = server.url or server.command or "-"
+        details = [f"{server.transport}", endpoint, f"[{status}]"]
+        if server.prefix:
+            details.append(f"prefix={server.prefix}")
+        lines.append(f"- {server.name}: {' '.join(details)}")
+    return "\n".join(lines)

@@ -3588,11 +3588,12 @@ wheels = [
 
 [[package]]
 name = "vcode"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "agent-client-protocol" },
     { name = "pydantic-ai" },
+    { name = "pyyaml" },
 ]
 
 [package.optional-dependencies]
@@ -3632,6 +3633,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest-asyncio", marker = "extra == 'dev'" },
     { name = "pytest-cov", marker = "extra == 'dev'" },
+    { name = "pyyaml" },
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "ty", marker = "extra == 'dev'" },
     { name = "vcode", extras = ["dev", "docs"], marker = "extra == 'all'" },

@@ -51,9 +51,8 @@ async def _test_model_response(
     del agent_info
     latest_message = messages[-1] if messages else None
     if isinstance(latest_message, ModelRequest):
-        request_message = latest_message
         tool_returns = []
-        for part in request_message.parts:
+        for part in latest_message.parts:
             if getattr(part, "part_kind", None) == "tool-return":
                 tool_returns.append(part)
         if tool_returns:

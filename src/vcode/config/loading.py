@@ -7,8 +7,13 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import TypeAlias
 
+import yaml
+
 from vcode.config.models import (
     AgentSpec,
+    HookCommandConfig,
+    HookConfig,
+    HookEventId,
     McpConfig,
     McpServerConfig,
     WebBrowserPreferences,
@@ -19,6 +24,7 @@ from vcode.config.models import (
 )
 from vcode.config.paths import (
     agents_file,
+    hooks_file,
     local_preferences_file,
     mcp_file,
     preferences_file,
@@ -27,6 +33,7 @@ from vcode.modes import DEFAULT_MODE_ID, MODE_BY_ID
 
 __all__ = (
     "load_agents_config",
+    "load_hooks_config",
     "load_mcp_config",
     "load_preferences",
     "save_preferences",
@@ -38,7 +45,7 @@ ENV_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 
 def load_preferences(cwd: Path) -> WorkspacePreferences:
-    payload = load_json_file(preferences_file(cwd.resolve()))
+    payload = load_data_file(preferences_file(cwd.resolve()))
 
     mode_models_value = payload.get("mode_models", {})
     mode_models = mode_models_value if isinstance(mode_models_value, dict) else {}
@@ -112,7 +119,7 @@ def save_preferences(cwd: Path, preferences: WorkspacePreferences) -> None:
 
 
 def load_agents_config(cwd: Path) -> dict[str, AgentSpec]:
-    payload = load_json_file(agents_file(cwd.resolve()))
+    payload = load_data_file(agents_file(cwd.resolve()))
     agents: dict[str, AgentSpec] = {}
     for name, value in payload.items():
         agent_payload = mapping_from_object(value)
@@ -123,7 +130,7 @@ def load_agents_config(cwd: Path) -> dict[str, AgentSpec]:
 
 
 def load_mcp_config(cwd: Path) -> McpConfig:
-    payload = load_json_file(mcp_file(cwd.resolve()))
+    payload = load_data_file(mcp_file(cwd.resolve()))
     raw_servers = list_from_object(payload.get("servers"))
 
     servers: list[McpServerConfig] = []
@@ -155,10 +162,59 @@ def load_mcp_config(cwd: Path) -> McpConfig:
     return McpConfig(servers=servers)
 
 
-def load_json_file(path: Path) -> JsonObject:
+def load_hooks_config(cwd: Path) -> HookConfig:
+    payload = load_data_file(hooks_file(cwd.resolve()))
+    events_payload = nested_mapping(payload, "events") if "events" in payload else payload
+    events: dict[HookEventId, list[HookCommandConfig]] = {}
+    for event_name, raw_commands in events_payload.items():
+        normalized_event = normalize_hook_event_id(event_name)
+        if normalized_event is None:
+            continue
+        commands_payload = list_from_object(raw_commands)
+        commands: list[HookCommandConfig] = []
+        for raw_command in commands_payload:
+            command_payload = mapping_from_object(raw_command)
+            if command_payload is None:
+                continue
+            command = optional_string_value(command_payload, "command")
+            if command is None:
+                continue
+            timeout_value = optional_float_value(command_payload, "timeout_seconds")
+            if timeout_value is None:
+                timeout_value = optional_float_value(command_payload, "timeout")
+            commands.append(
+                HookCommandConfig(
+                    name=string_value(command_payload, "name").strip(),
+                    command=interpolate_env(command),
+                    args=[
+                        interpolate_env(str(arg))
+                        for arg in list_from_object(command_payload.get("args"))
+                    ],
+                    env=interpolate_mapping(nested_mapping(command_payload, "env")),
+                    tools=[
+                        str(tool_name).strip()
+                        for tool_name in list_from_object(command_payload.get("tools"))
+                        if str(tool_name).strip()
+                    ],
+                    enabled=bool_value(command_payload, "enabled", default=True),
+                    timeout_seconds=timeout_value,
+                )
+            )
+        if commands:
+            events[normalized_event] = commands
+    return HookConfig(events=events)
+
+
+def load_data_file(path: Path) -> JsonObject:
     if not path.exists():
         return {}
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    text = path.read_text(encoding="utf-8")
+    if path.suffix == ".json":
+        payload = json.loads(text)
+    elif path.suffix in {".yml", ".yaml"}:
+        payload = yaml.safe_load(text)
+    else:
+        return {}
     if isinstance(payload, dict):
         return payload
     return {}
@@ -212,3 +268,68 @@ def bool_value(payload: Mapping[str, object], key: str, *, default: bool) -> boo
     if value is None:
         return default
     return bool(value)
+
+
+def optional_float_value(payload: Mapping[str, object], key: str) -> float | None:
+    value = payload.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str | int | float):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def normalize_hook_event_id(value: object) -> HookEventId | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    if normalized == "before_run":
+        return "before_run"
+    if normalized == "after_run":
+        return "after_run"
+    if normalized == "run":
+        return "run"
+    if normalized == "run_error":
+        return "run_error"
+    if normalized == "before_node_run":
+        return "before_node_run"
+    if normalized == "after_node_run":
+        return "after_node_run"
+    if normalized == "node_run":
+        return "node_run"
+    if normalized == "node_run_error":
+        return "node_run_error"
+    if normalized == "before_model_request":
+        return "before_model_request"
+    if normalized == "after_model_request":
+        return "after_model_request"
+    if normalized == "model_request":
+        return "model_request"
+    if normalized == "model_request_error":
+        return "model_request_error"
+    if normalized == "before_tool_validate":
+        return "before_tool_validate"
+    if normalized == "after_tool_validate":
+        return "after_tool_validate"
+    if normalized == "tool_validate":
+        return "tool_validate"
+    if normalized == "tool_validate_error":
+        return "tool_validate_error"
+    if normalized == "before_tool_execute":
+        return "before_tool_execute"
+    if normalized == "after_tool_execute":
+        return "after_tool_execute"
+    if normalized == "tool_execute":
+        return "tool_execute"
+    if normalized == "tool_execute_error":
+        return "tool_execute_error"
+    if normalized == "prepare_tools":
+        return "prepare_tools"
+    if normalized == "run_event_stream":
+        return "run_event_stream"
+    if normalized == "event":
+        return "event"
+    return None

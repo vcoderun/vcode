@@ -38,10 +38,11 @@ check:
 
 check-matrix:
 	@for version in $(PYTHON_VERSIONS); do \
+		short_version=$${version%.*}; \
 		printf "$(BLUE)==>$(RESET) Running validation matrix for Python $$version...\n"; \
 		uv run --python $$version ruff check src/vcode tests || exit $$?; \
-		uv run --python $$version ty check --python-version $$version || exit $$?; \
-		uv run --python $$version basedpyright --pythonversion $$version || exit $$?; \
+		uv run --python $$version ty check --python-version $$short_version || exit $$?; \
+		uv run --python $$version basedpyright --pythonversion $$short_version || exit $$?; \
 	done
 	@printf "$(GREEN)✔ Matrix checking complete.$(RESET)\n"
 

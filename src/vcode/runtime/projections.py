@@ -1,5 +1,6 @@
 from __future__ import annotations as _annotations
 
+import json
 from collections.abc import Sequence
 
 from pydantic_ai.messages import ModelMessage, ToolCallPart, ToolReturnPart
@@ -54,7 +55,7 @@ def build_start_projection(part: ToolCallPart) -> ToolProjection:
     return ToolProjection(
         tool_call_id=part.tool_call_id,
         title=projection_title(part.tool_name, args),
-        kind=kind_by_tool.get(part.tool_name, "other"),
+        kind=kind_by_tool.get(part.tool_name, "execute"),
         raw_input=args,
         raw_output="",
         locations=locations,
@@ -69,7 +70,7 @@ def build_complete_projection(
     outcome: str,
 ) -> ToolProjection:
     content = start.content
-    if start.kind in {"read", "search"}:
+    if start.kind in {"read", "search", "execute", "other"}:
         content = (tool_text_content(raw_output[:4000]),)
 
     return ToolProjection(
@@ -86,6 +87,8 @@ def build_complete_projection(
 
 def projection_title(tool_name: str, args: dict[str, str]) -> str:
     base_title = title_by_tool.get(tool_name, tool_name)
+    if tool_name not in title_by_tool:
+        base_title = f"Run {tool_name}"
     path = args.get("path")
     if path:
         return f"{base_title} {path}"
@@ -101,9 +104,14 @@ def projection_locations(tool_name: str, args: dict[str, str]) -> tuple[str, ...
     return ()
 
 
-def projection_start_content(tool_name: str, args: dict[str, str]) -> tuple[ToolContentDiff, ...]:
+def projection_start_content(
+    tool_name: str,
+    args: dict[str, str],
+) -> tuple[ToolContentDiff | ToolContentText, ...]:
     if tool_name != "write_file":
-        return ()
+        if not args:
+            return ()
+        return (tool_text_content(json.dumps(args, indent=2, sort_keys=True)),)
     path = args.get("path")
     content = args.get("content")
     if not path or content is None:

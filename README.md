@@ -9,7 +9,13 @@ The current repository is intentionally focused on a narrow but working skeleton
 - `Ask`, `Plan`, and `Agent` modes
 - per-session approvals for file writes
 - model selection and ACP model/config surfaces
-- local workspace tools for list, read, and write
+- capability-first runtime assembly on top of `pydantic-ai`
+- local workspace tools for list, read, and write through native capabilities
+- mode-aware tool visibility with `PrepareTools`
+- MCP server integration through native `MCP` capabilities
+- YAML-first `.vcode/mcp.yml` with JSON fallback
+- YAML-first `.vcode/hooks.yml` with JSON fallback
+- hook command execution via `pydantic-ai Hooks`
 
 ## Quick Start
 
@@ -99,7 +105,16 @@ Implemented today:
 - mode switching
 - model selection
 - write approvals with diff previews
+- capability-based runtime composition
+- native MCP capability wiring from `.vcode/mcp.yml`
 - `.vcode/.vcodeignore` filtering for reads and file listing
+- `/hooks` and `/mcp` runtime inspection commands
+
+Local demo assets also exist for manual validation:
+
+- `scripts/demo_mcp_server.py` for a real stdio MCP server
+- `scripts/mock_hook_audit.py` for append-only hook auditing
+- `scripts/mock_hook_snapshot.py` for payload snapshots
 
 Not implemented yet:
 
@@ -108,3 +123,4 @@ Not implemented yet:
 - web search and scraping
 - Python quality tools as runtime tools
 - subagents, CodeMode, and RLM workflows
+- approval-aware hook execution

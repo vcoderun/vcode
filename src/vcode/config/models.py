@@ -1,11 +1,15 @@
 from __future__ import annotations as _annotations
 
 from dataclasses import dataclass, field
+from typing import Literal, TypeAlias
 
 from vcode.modes import DEFAULT_MODE_ID
 
 __all__ = (
     "AgentSpec",
+    "HookCommandConfig",
+    "HookConfig",
+    "HookEventId",
     "McpConfig",
     "McpServerConfig",
     "WebBrowserPreferences",
@@ -14,6 +18,32 @@ __all__ = (
     "WebSearchPreferences",
     "WorkspacePreferences",
 )
+
+HookEventId: TypeAlias = Literal[
+    "before_run",
+    "after_run",
+    "run",
+    "run_error",
+    "before_node_run",
+    "after_node_run",
+    "node_run",
+    "node_run_error",
+    "before_model_request",
+    "after_model_request",
+    "model_request",
+    "model_request_error",
+    "before_tool_validate",
+    "after_tool_validate",
+    "tool_validate",
+    "tool_validate_error",
+    "before_tool_execute",
+    "after_tool_execute",
+    "tool_execute",
+    "tool_execute_error",
+    "prepare_tools",
+    "run_event_stream",
+    "event",
+]
 
 
 @dataclass(slots=True, kw_only=True)
@@ -72,3 +102,19 @@ class McpServerConfig:
 @dataclass(slots=True, kw_only=True)
 class McpConfig:
     servers: list[McpServerConfig] = field(default_factory=list)
+
+
+@dataclass(slots=True, kw_only=True)
+class HookCommandConfig:
+    name: str = ""
+    command: str
+    args: list[str] = field(default_factory=list)
+    env: dict[str, str] = field(default_factory=dict)
+    tools: list[str] = field(default_factory=list)
+    enabled: bool = True
+    timeout_seconds: float | None = None
+
+
+@dataclass(slots=True, kw_only=True)
+class HookConfig:
+    events: dict[HookEventId, list[HookCommandConfig]] = field(default_factory=dict)

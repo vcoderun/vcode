@@ -1,5 +1,6 @@
 from __future__ import annotations as _annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -92,6 +93,60 @@ class TestVCodeRuntime:
         assert "Active Mode" in status.response_text
         assert "Agent" in status.response_text
         assert "Plan          anthropic:claude-sonnet-4-5" in status.response_text
+
+    async def test_hooks_command_shows_configured_hooks(self, tmp_path: Path) -> None:
+        runtime = VCodeRuntime()
+        session = runtime.create_session(tmp_path)
+        (tmp_path / ".vcode").mkdir(parents=True, exist_ok=True)
+        (tmp_path / ".vcode" / "hooks.yml").write_text(
+            "\n".join(
+                [
+                    "events:",
+                    "  before_tool_execute:",
+                    "    - name: audit-write",
+                    "      command: python3.11",
+                    "      args:",
+                    "        - hooks.py",
+                    "      tools:",
+                    "        - write_file",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        result = _require_turn_result(
+            await runtime.run_prompt(tmp_path, session.session_id, "/hooks")
+        )
+
+        assert "Configured Hooks" in result.response_text
+        assert "before_tool_execute:" in result.response_text
+        assert "audit-write: python3.11 hooks.py [tools: write_file]" in result.response_text
+
+    async def test_mcp_command_shows_configured_servers(self, tmp_path: Path) -> None:
+        runtime = VCodeRuntime()
+        session = runtime.create_session(tmp_path)
+        (tmp_path / ".vcode").mkdir(parents=True, exist_ok=True)
+        (tmp_path / ".vcode" / "mcp.yml").write_text(
+            "\n".join(
+                [
+                    "servers:",
+                    "  - name: browser",
+                    "    transport: http",
+                    "    url: https://example.test/mcp",
+                    "    prefix: browser",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        result = _require_turn_result(
+            await runtime.run_prompt(tmp_path, session.session_id, "/mcp")
+        )
+
+        assert "Configured MCP Servers" in result.response_text
+        assert "- browser: http https://example.test/mcp [enabled] prefix=browser" in (
+            result.response_text
+        )
 
     async def test_duplicate_plain_text_is_normalized(self, tmp_path: Path) -> None:
         runtime = build_test_runtime(auto_approve=True)
@@ -274,3 +329,93 @@ class TestVCodeRuntime:
         assert "visible.txt" in result.response_text
         assert "hidden.secret" not in result.response_text
         assert "private/" not in result.response_text
+
+    async def test_ask_mode_hides_write_tool_from_model(self, tmp_path: Path) -> None:
+        async def inspect_tools_model(messages, agent_info: AgentInfo) -> ModelResponse:
+            del messages
+            visible_tools = ",".join(tool_def.name for tool_def in agent_info.function_tools)
+            return ModelResponse(
+                parts=[TextPart(content=visible_tools)],
+                model_name="test:inspect-tools",
+            )
+
+        runtime = VCodeRuntime(
+            model_resolver=lambda model_id: FunctionModel(
+                function=inspect_tools_model,
+                model_name=model_id,
+            )
+        )
+        configure_test_model(tmp_path)
+        session = runtime.create_session(tmp_path)
+        runtime.set_mode(tmp_path, session.session_id, "ask")
+
+        result = _require_turn_result(
+            await runtime.run_prompt(tmp_path, session.session_id, "show tools")
+        )
+
+        assert "list_files" in result.response_text
+        assert "read_file" in result.response_text
+        assert "write_file" not in result.response_text
+
+    async def test_agent_mode_keeps_write_tool_visible_to_model(self, tmp_path: Path) -> None:
+        async def inspect_tools_model(messages, agent_info: AgentInfo) -> ModelResponse:
+            del messages
+            visible_tools = ",".join(tool_def.name for tool_def in agent_info.function_tools)
+            return ModelResponse(
+                parts=[TextPart(content=visible_tools)],
+                model_name="test:inspect-tools",
+            )
+
+        runtime = VCodeRuntime(
+            model_resolver=lambda model_id: FunctionModel(
+                function=inspect_tools_model,
+                model_name=model_id,
+            )
+        )
+        configure_test_model(tmp_path)
+        session = runtime.create_session(tmp_path)
+        runtime.set_mode(tmp_path, session.session_id, "agent")
+
+        result = _require_turn_result(
+            await runtime.run_prompt(tmp_path, session.session_id, "show tools")
+        )
+
+        assert "list_files" in result.response_text
+        assert "read_file" in result.response_text
+        assert "write_file" in result.response_text
+
+    async def test_before_tool_execute_hook_runs_configured_command(self, tmp_path: Path) -> None:
+        runtime = build_test_runtime(auto_approve=True)
+        configure_test_model(tmp_path)
+        (tmp_path / ".vcode").mkdir(parents=True, exist_ok=True)
+        (tmp_path / ".vcode" / "hooks.yml").write_text(
+            "\n".join(
+                [
+                    "events:",
+                    "  before_tool_execute:",
+                    f"    - command: {sys.executable}",
+                    "      args:",
+                    "        - -c",
+                    (
+                        "        - from pathlib import Path; "
+                        "Path('hook-ran.txt').write_text('before_tool_execute', encoding='utf-8')"
+                    ),
+                ]
+            ),
+            encoding="utf-8",
+        )
+        session = runtime.create_session(tmp_path)
+
+        result = _require_turn_result(
+            await runtime.run_prompt(
+                tmp_path, session.session_id, "write notes.txt: hello from hook"
+            )
+        )
+
+        assert "Wrote notes.txt" in result.response_text
+        assert (tmp_path / "hook-ran.txt").read_text(encoding="utf-8") == "before_tool_execute"
+        assert any(
+            projection.kind == "execute"
+            and projection.raw_input.get("event") == "before_tool_execute"
+            for projection in result.tool_projections
+        )

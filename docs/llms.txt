@@ -21,9 +21,15 @@ The repository currently contains a working bare ACP agent skeleton, not a full 
   - `list_files`
   - `read_file`
   - `write_file`
+- capability-first runtime assembly with native `pydantic-ai` capabilities
+- mode-aware filesystem visibility via `PrepareTools`
+- MCP capability wiring from `.vcode/mcp.yml`
 - session-scoped write approvals
 - ACP permission prompts with structured diff previews for file writes
 - `.vcode/.vcodeignore` support for read and list filtering
+- YAML-first `.vcode/mcp.yml` with JSON fallback
+- YAML-first `.vcode/hooks.yml` with JSON fallback
+- hook command execution via `pydantic-ai Hooks`
 
 ## Important constraints
 
@@ -39,7 +45,7 @@ The repository currently contains a working bare ACP agent skeleton, not a full 
 - workspace regex/text search
 - web search and scraping as built-in tools
 - Python lint/test/typecheck tool loop
-- full MCP runtime consumption from `mcp.json`
+- richer hook actions and approval policy for `hooks.yml` / `hooks.json`
 - subagents, CodeMode, RLM, and multi-agent orchestration
 
 ## Repo structure

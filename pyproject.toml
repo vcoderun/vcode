@@ -1,6 +1,6 @@
 [project]
 name = "vcode"
-version = "0.1.0"
+version = "0.2.0"
 description = "ACP-first local coding agent built on pydantic-ai"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -17,6 +17,7 @@ keywords = ["acp", "agent-client-protocol", "coding-agent", "pydantic-ai"]
 dependencies = [
     "agent-client-protocol",
     "pydantic-ai",
+    "pyyaml",
 ]
 
 [project.optional-dependencies]
@@ -85,6 +86,10 @@ exclude = []
 
 [tool.ty.rules]
 unresolved-import = "ignore"
+
+[tool.basedpyright]
+include = ["src", "tests"]
+exclude = ["compares", "references", "docs", "site", "vcode-plans"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

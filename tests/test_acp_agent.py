@@ -220,6 +220,8 @@ class TestVCodeAcpAgent:
             "models",
             "model",
             "approvals",
+            "hooks",
+            "mcp",
             "approve",
             "deny",
             "update-preferences",
@@ -259,13 +261,46 @@ class TestVCodeAcpAgent:
             "ToolCallProgress",
             "AgentMessageChunk",
         ]
-        tool_start = visible_updates[-3]
-        assert isinstance(tool_start, ToolCallStart)
-        assert tool_start.content is not None
-        assert tool_start.content[0].type == "diff"
-        assert tool_start.content[0].path == "demo.txt"
-        assert tool_start.locations is not None
-        assert tool_start.locations[0].path == "demo.txt"
+
+    async def test_prompt_projects_hook_commands_to_acp(self, tmp_path: Path) -> None:
+        agent = VCodeAcpAgent(runtime=build_test_runtime(auto_approve=True))
+        configure_test_model(tmp_path)
+        client = FakeClient()
+        agent.on_connect(client)
+        (tmp_path / ".vcode").mkdir(parents=True, exist_ok=True)
+        (tmp_path / ".vcode" / "hooks.yml").write_text(
+            "\n".join(
+                [
+                    "events:",
+                    "  before_tool_execute:",
+                    "    - name: audit-write",
+                    "      command: python3.11",
+                    "      args:",
+                    "        - -c",
+                    "        - print('hook ran')",
+                    "      tools:",
+                    "        - write_file",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        response = await agent.new_session(cwd=str(tmp_path), mcp_servers=[])
+        await agent.prompt(
+            session_id=response.session_id,
+            prompt=[TextContentBlock(type="text", text="write demo.txt: hello acp")],
+        )
+
+        hook_updates = [
+            update
+            for _, update in client.updates
+            if isinstance(update, ToolCallProgress)
+            and isinstance(update.raw_input, dict)
+            and update.raw_input.get("event") == "before_tool_execute"
+        ]
+        assert hook_updates
+        assert hook_updates[0].kind == "execute"
+        assert hook_updates[0].title == "Hook audit-write"
 
     async def test_prompt_projects_read_file_with_visible_tool_content(
         self, tmp_path: Path

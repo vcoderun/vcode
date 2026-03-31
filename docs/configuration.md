@@ -80,16 +80,112 @@ Current typed shape:
 
 Only the `model` field is currently validated.
 
-### `mcp.json`
+### `mcp.yml`
 
-This file is also loadable, including environment variable interpolation for fields such as:
+MCP config is YAML-first.
+
+Resolution order:
+
+- `.vcode/mcp.yml`
+- `.vcode/mcp.yaml`
+- `.vcode/mcp.json`
+- `~/.vcode/mcp.yml`
+- `~/.vcode/mcp.yaml`
+- `~/.vcode/mcp.json`
+
+JSON remains supported, but `mcp.yml` is the native format.
+
+Environment variable interpolation is supported for fields such as:
 
 - `command`
 - `args`
 - `url`
 - `env`
 
-The current runtime does not yet instantiate MCP servers from it.
+The current runtime reads this file and builds native `pydantic-ai` MCP capabilities from it.
+
+Example:
+
+```yaml
+servers:
+  - name: demo-local
+    transport: stdio
+    command: python3.11
+    args:
+      - scripts/demo_mcp_server.py
+    prefix: demo
+
+  - name: searx-local
+    transport: http
+    url: ${SEARX_MCP_URL}
+    prefix: searx
+    enabled: false
+```
+
+Tracked local demo server:
+
+- `scripts/demo_mcp_server.py`
+
+### `hooks.yml`
+
+Hooks config is also YAML-first.
+
+Resolution order:
+
+- `.vcode/hooks.yml`
+- `.vcode/hooks.yaml`
+- `.vcode/hooks.json`
+- `~/.vcode/hooks.yml`
+- `~/.vcode/hooks.yaml`
+- `~/.vcode/hooks.json`
+
+Current scope:
+
+- the file is loadable and typed
+- configured commands are bridged into native `pydantic-ai` `Hooks`
+- event ids match `pydantic-ai` hook lifecycle names
+
+Example:
+
+```yaml
+events:
+  before_tool_execute:
+    - name: audit-write
+      command: python3.11
+      args:
+        - scripts/mock_hook_audit.py
+      tools:
+        - write_file
+
+  after_model_request:
+    - name: snapshot-model-response
+      command: python3.11
+      args:
+        - scripts/mock_hook_snapshot.py
+```
+
+Current behavior:
+
+- commands run with the workspace root as `cwd`
+- configured `env` entries are merged into the process environment
+- optional `name` gives a stable display label for `/hooks` and ACP hook projections
+- optional `tools` filters a hook command to matching tool names or glob patterns
+- `VCODE_HOOK_EVENT`
+- `VCODE_HOOK_WORKSPACE_ROOT`
+- `VCODE_HOOK_SESSION_ID`
+- `VCODE_HOOK_MODE_ID`
+- `VCODE_HOOK_PAYLOAD_JSON`
+  are injected for each hook command
+
+Inspection commands:
+
+- `/hooks` shows the resolved hook configuration for the current workspace
+- `/mcp` shows the resolved MCP server configuration for the current workspace
+
+Tracked local demo scripts:
+
+- `scripts/mock_hook_audit.py`
+- `scripts/mock_hook_snapshot.py`
 
 ## Session storage
 
