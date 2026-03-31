@@ -19,6 +19,8 @@ The current repository is intentionally focused on a narrow but working skeleton
 
 ## Quick Start
 
+Read the docs here: https://docs.vcode.run
+
 Requirements:
 
 - Python 3.11+
