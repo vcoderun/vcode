@@ -13,6 +13,8 @@ You are an expert Python developer assisting with this modern repository.
    - Write modern Python 3.11+ code.
    - Use built-in types for type hinting (`list[str]`, `dict[str, int]`, `str | None`). Avoid importing from `typing` unless necessary (e.g., `Callable`, `Any`).
    - Follow strict type hinting. `basedpyright` will reject untyped definitions.
+   - **Always run type checking with `basedpyright` after changes.**
+   - **Bu projede her değişiklikten sonra type checking (basedpyright) çalıştır.**
 
 3. **Testing:**
    - Write test cases using `pytest`.
